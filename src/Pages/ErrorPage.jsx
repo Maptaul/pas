@@ -1,35 +1,36 @@
-import { useNavigate } from "react-router-dom";
+import React from "react";
+import { Link } from "react-router-dom";
 
 const ErrorPage = () => {
-  const navigate = useNavigate();
-
   return (
-    <div className="flex flex-col items-center justify-center  bg-white p-8 rounded-lg shadow-lg max-w-8/12 mx-auto ">
-      <div className="text-center ">
-        <h1 className="text-7xl font-bold text-blue-500">404</h1>
-        <p className="mt-4 text-2xl font-semibold">Oops! Page Not Found</p>
-        <p className="mt-2 text-gray-400">
-          The page you are looking for does not exist or has been moved.
-        </p>
-      </div>
-      <div className="mt-8">
-        {/* <div className=" justify-center items-center">
-          <img
-            className="w-[500px] h-[300px] rounded-lg"
-            src="https://i.ibb.co.com/W32SjWD/image.png"
-            alt=""
-          />
-        </div> */}
-        <div className="items-center justify-center text-center">
-          <button
-            className="btn btn-primary mt-6 px-6 py-2"
-            onClick={() => navigate("/")}
-          >
-            Return to the homepage
-          </button>
+    <section className="page_404 py-10 bg-white min-h-screen flex items-center justify-center">
+      <div className="container mx-auto">
+        <div className="flex justify-center">
+          <div className="w-full sm:w-10/12 text-center">
+            <div
+              className="four_zero_four_bg h-[400px] bg-cover bg-center"
+              style={{
+                backgroundImage: `url(https://cdn.dribbble.com/users/285475/screenshots/2083086/dribbble_1.gif)`,
+              }}
+            >
+              <h1 className="text-8xl text-gray-800 pt-20">404</h1>
+            </div>
+
+            <div className="contant_box_404 -mt-12">
+              <h3 className="text-5xl sm:text-6xl text-gray-800 mb-4">
+                Look like you're lost
+              </h3>
+              <p className="text-gray-600 mb-6">
+                The page you are looking for is not available!
+              </p>
+              <Link to="/" className="btn btn-purple link_404">
+                Go to Home
+              </Link>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
+    </section>
   );
 };
 

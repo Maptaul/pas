@@ -11,7 +11,7 @@ body {
   @apply bg-purple-600 text-white hover:bg-purple-700 transition-all duration-300 shadow-lg;
 }
 .btn-purple.btn-outline {
-  @apply border-purple-600 text-purple-600 hover:bg-purple-600 hover:text-white transition-all duration-300;
+  @apply border-purple-600 text-white hover:bg-emerald-600 hover:text-white transition-all duration-300;
 }
 
 @keyframes fadeIn {
