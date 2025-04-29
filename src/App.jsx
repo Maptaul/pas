@@ -4,6 +4,8 @@ import Root from "./Layouts/Root";
 import Contact from "./Pages/Contact";
 import ErrorPage from "./Pages/ErrorPage";
 import Home from "./Pages/Home";
+import Login from "./Pages/Login";
+import SignUp from "./Pages/SignUp";
 
 function App() {
   return (
@@ -13,6 +15,8 @@ function App() {
         <Route path="contact" element={<Contact></Contact>} />
         <Route path="*" element={<ErrorPage />} />
         <Route path="apply-passport" element={<PassportApplicationForm />} />
+        <Route path="login" element={<Login />} />
+        <Route path="signUp" element={<SignUp />} />
       </Route>
     </Routes>
   );
