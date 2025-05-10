@@ -1,7 +1,14 @@
+import axios from "axios";
+import { getAuth } from "firebase/auth"; // Import Firebase auth
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
 import { QRCodeCanvas } from "qrcode.react";
-import React, { useState } from "react";
+import { useState } from "react";
 import { toast } from "react-toastify";
 import Swal from "sweetalert2";
+
+const image_hosting_key = import.meta.env.VITE_IMAGE_HOSTING_KEY;
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
 const PassportApplicationForm = () => {
   const [step, setStep] = useState(1);
@@ -20,8 +27,8 @@ const PassportApplicationForm = () => {
     passportPages: "48",
     validity: "5",
     deliveryType: "",
-    appointmentDate: "", // Will store the formatted date/time
-    appointmentTime: "16:30", // Default to 4:30 PM
+    appointmentDate: "",
+    appointmentTime: "16:30",
     pickupPoint: "",
   });
   const [files, setFiles] = useState({
@@ -37,6 +44,19 @@ const PassportApplicationForm = () => {
     citizenshipCertificate: null,
     onlineGD: null,
   });
+  const [fileUrls, setFileUrls] = useState({
+    applicationCopy: "",
+    nidBirthCertificate: "",
+    nidOnlineCopy: "",
+    studentJobCard: "",
+    fatherNidBirthCertificate: "",
+    motherNidBirthCertificate: "",
+    utilityBillCopy: "",
+    previousPassport: "",
+    landRegister: "",
+    citizenshipCertificate: "",
+    onlineGD: "",
+  });
   const [submitted, setSubmitted] = useState(false);
   const [applicationId, setApplicationId] = useState("");
 
@@ -44,14 +64,12 @@ const PassportApplicationForm = () => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
 
-    // If date or time changes, update the formatted appointmentDate
     if (name === "appointmentDate" || name === "appointmentTime") {
       const dateValue =
         name === "appointmentDate" ? value : formData.appointmentDate;
       const timeValue =
         name === "appointmentTime" ? value : formData.appointmentTime;
 
-      // Validate time against excluded times
       const excludedTimes = ["17:00", "17:30", "18:30", "19:30"];
       if (excludedTimes.includes(timeValue)) {
         toast.error(
@@ -61,7 +79,7 @@ const PassportApplicationForm = () => {
             autoClose: 3000,
           }
         );
-        setFormData((prev) => ({ ...prev, appointmentTime: "16:30" })); // Reset to default
+        setFormData((prev) => ({ ...prev, appointmentTime: "16:30" }));
         return;
       }
 
@@ -69,46 +87,79 @@ const PassportApplicationForm = () => {
         const [year, month, day] = dateValue.split("-");
         const [hours, minutes] = timeValue.split(":");
         const date = new Date(year, month - 1, day, hours, minutes);
-        const formattedDate = date.toLocaleString("en-US", {
-          month: "long",
-          day: "numeric",
-          year: "numeric",
-          hour: "numeric",
-          minute: "numeric",
-          hour12: true,
-        });
+        const formattedDate = date.toISOString(); // Store in ISO format for backend
         setFormData((prev) => ({ ...prev, appointmentDate: formattedDate }));
       }
     }
   };
 
-  const handleFileChange = (e) => {
+  const handleFileChange = async (e) => {
     const { name, files: uploadedFiles } = e.target;
-    setFiles({ ...files, [name]: uploadedFiles[0] });
+    const selectedFile = uploadedFiles[0];
+    if (!selectedFile) return;
+
+    const validTypes = ["image/jpeg", "image/jpg", "application/pdf"];
+    const maxSize = 5 * 1024 * 1024; // 5MB
+
+    if (!validTypes.includes(selectedFile.type)) {
+      toast.error("Please upload a valid file (JPEG, JPG, or PDF).", {
+        position: "top-right",
+        autoClose: 3000,
+      });
+      return;
+    }
+
+    if (selectedFile.size > maxSize) {
+      toast.error("File size exceeds 5MB. Please upload a smaller file.", {
+        position: "top-right",
+        autoClose: 3000,
+      });
+      return;
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append("image", selectedFile);
+      const res = await axios.post(
+        `https://api.imgbb.com/1/upload?key=${image_hosting_key}`,
+        formData
+      );
+      setFileUrls((prev) => ({ ...prev, [name]: res.data.data.display_url }));
+      setFiles((prev) => ({ ...prev, [name]: selectedFile }));
+      toast.success("File uploaded successfully.", {
+        position: "top-right",
+        autoClose: 2000,
+      });
+    } catch (error) {
+      toast.error("Failed to upload file. Please try again.", {
+        position: "top-right",
+        autoClose: 3000,
+      });
+    }
   };
 
   const handleDeleteFile = (name) => {
-    setFiles({ ...files, [name]: null });
+    setFiles((prev) => ({ ...prev, [name]: null }));
+    setFileUrls((prev) => ({ ...prev, [name]: "" }));
   };
 
-  const handleViewFile = (file) => {
-    if (file) {
-      const fileURL = URL.createObjectURL(file);
-      window.open(fileURL, "_blank");
+  const handleViewFile = (url) => {
+    if (url) {
+      window.open(url, "_blank");
     }
   };
 
   const nextStep = () => {
     if (step === 1) {
       if (!formData.passportType) {
-        toast.error("Please select a passport type!", {
+        toast.error("Please select a passport type.", {
           position: "top-right",
           autoClose: 3000,
         });
         return;
       }
       if (formData.passportType !== "Ordinary") {
-        toast.info("Please communicate with your authority to proceed.", {
+        toast.info("Please contact your authority to proceed.", {
           position: "top-right",
           autoClose: 3000,
         });
@@ -122,14 +173,14 @@ const PassportApplicationForm = () => {
         !formData.dateOfBirth ||
         !formData.mobileNumber)
     ) {
-      toast.error("Please fill in all personal information fields!", {
+      toast.error("Please fill in all personal information fields.", {
         position: "top-right",
         autoClose: 3000,
       });
       return;
     }
     if (step === 3 && !formData.previousPassport) {
-      toast.error("Please select an option for previous passport!", {
+      toast.error("Please select an option for previous passport.", {
         position: "top-right",
         autoClose: 3000,
       });
@@ -143,7 +194,7 @@ const PassportApplicationForm = () => {
         !formData.issueDate ||
         !formData.expiryDate)
     ) {
-      toast.error("Please fill in all previous passport details!", {
+      toast.error("Please fill in all previous passport details.", {
         position: "top-right",
         autoClose: 3000,
       });
@@ -154,14 +205,14 @@ const PassportApplicationForm = () => {
       formData.reissueReason === "Other" &&
       !formData.otherReason
     ) {
-      toast.error("Please explain the reason for your passport request!", {
+      toast.error("Please explain the reason for your passport request.", {
         position: "top-right",
         autoClose: 3000,
       });
       return;
     }
     if (step === 4 && (!formData.passportPages || !formData.validity)) {
-      toast.error("Please select passport options!", {
+      toast.error("Please select passport options.", {
         position: "top-right",
         autoClose: 3000,
       });
@@ -169,17 +220,16 @@ const PassportApplicationForm = () => {
     }
     if (
       step === 5 &&
-      (!files.applicationCopy ||
-        !files.nidBirthCertificate ||
-        !files.nidOnlineCopy ||
-        !files.studentJobCard ||
-        !files.fatherNidBirthCertificate ||
-        !files.motherNidBirthCertificate ||
-        !files.utilityBillCopy ||
-        !files.landRegister ||
-        !files.citizenshipCertificate)
+      (!fileUrls.applicationCopy ||
+        !fileUrls.nidBirthCertificate ||
+        !fileUrls.nidOnlineCopy ||
+        !fileUrls.fatherNidBirthCertificate ||
+        !fileUrls.motherNidBirthCertificate ||
+        !fileUrls.utilityBillCopy ||
+        !fileUrls.landRegister ||
+        !fileUrls.citizenshipCertificate)
     ) {
-      toast.error("Please upload all required documents!", {
+      toast.error("Please upload all required documents.", {
         position: "top-right",
         autoClose: 3000,
       });
@@ -192,7 +242,7 @@ const PassportApplicationForm = () => {
         !formData.appointmentTime)
     ) {
       toast.error(
-        "Please select a delivery type and an appointment date/time!",
+        "Please select a delivery type and an appointment date/time.",
         {
           position: "top-right",
           autoClose: 3000,
@@ -201,7 +251,7 @@ const PassportApplicationForm = () => {
       return;
     }
     if (step === 7 && !formData.pickupPoint) {
-      toast.error("Please select a pickup point!", {
+      toast.error("Please select a pickup point.", {
         position: "top-right",
         autoClose: 3000,
       });
@@ -212,7 +262,7 @@ const PassportApplicationForm = () => {
 
   const prevStep = () => setStep(step - 1);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (
@@ -227,18 +277,17 @@ const PassportApplicationForm = () => {
       !formData.deliveryType ||
       !formData.appointmentDate ||
       !formData.pickupPoint ||
-      !files.applicationCopy ||
-      !files.nidBirthCertificate ||
-      !files.nidOnlineCopy ||
-      !files.studentJobCard ||
-      !files.fatherNidBirthCertificate ||
-      !files.motherNidBirthCertificate ||
-      !files.utilityBillCopy ||
-      !files.landRegister ||
-      !files.citizenshipCertificate
+      !fileUrls.applicationCopy ||
+      !fileUrls.nidBirthCertificate ||
+      !fileUrls.nidOnlineCopy ||
+      !fileUrls.fatherNidBirthCertificate ||
+      !fileUrls.motherNidBirthCertificate ||
+      !fileUrls.utilityBillCopy ||
+      !fileUrls.landRegister ||
+      !fileUrls.citizenshipCertificate
     ) {
       toast.error(
-        "Please complete all steps and upload all required documents!",
+        "Please complete all steps and upload all required documents.",
         {
           position: "top-right",
           autoClose: 3000,
@@ -255,20 +304,58 @@ const PassportApplicationForm = () => {
       confirmButtonColor: "#a855f7",
       cancelButtonColor: "#d33",
       confirmButtonText: "Yes, submit!",
-    }).then((result) => {
+    }).then(async (result) => {
       if (result.isConfirmed) {
-        const newApplicationId = `PAS-2025-${Math.floor(
-          10000 + Math.random() * 90000
-        )}`;
-        setApplicationId(newApplicationId);
-        setSubmitted(true);
-        toast.success(
-          `Application submitted successfully! Application ID: ${newApplicationId}`,
-          {
+        try {
+          const auth = getAuth();
+          const user = auth.currentUser;
+          if (!user) {
+            toast.error("Please log in to submit the application.", {
+              position: "top-right",
+              autoClose: 3000,
+            });
+            return;
+          }
+          const token = await user.getIdToken(); // Get Firebase JWT token
+
+          const applicationData = {
+            ...formData,
+            files: fileUrls,
+            createdAt: new Date().toISOString(),
+          };
+
+          const response = await axios.post(
+            `${API_URL}/applications`,
+            applicationData,
+            {
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+            }
+          );
+
+          const { applicationId } = response.data;
+          setApplicationId(applicationId);
+          setSubmitted(true);
+          toast.success(
+            `Application submitted successfully! Application ID: ${applicationId}`,
+            {
+              position: "top-right",
+              autoClose: 3000,
+            }
+          );
+        } catch (error) {
+          console.error("Submission error:", error);
+          const errorMessage =
+            error.response?.data?.error ||
+            error.message ||
+            "Failed to submit application.";
+          toast.error(errorMessage, {
             position: "top-right",
             autoClose: 3000,
-          }
-        );
+          });
+        }
       }
     });
   };
@@ -289,15 +376,61 @@ const PassportApplicationForm = () => {
   };
 
   const handlePrint = () => {
+    const printContent = document.querySelector(
+      "#confirmation-page .card-body"
+    ).innerHTML;
+    const originalContent = document.body.innerHTML;
+    document.body.innerHTML = printContent;
     window.print();
+    document.body.innerHTML = originalContent;
+    window.location.reload();
   };
 
-  const handleDownload = () => {
-    const canvas = document.getElementById("qr-code");
-    const link = document.createElement("a");
-    link.href = canvas.toDataURL("image/png");
-    link.download = `Passport_Application_${applicationId}.png`;
-    link.click();
+  const handleDownload = async () => {
+    const element = document.getElementById("confirmation-page");
+    if (!element) {
+      console.error("Confirmation page element not found!");
+      return;
+    }
+
+    try {
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        logging: true,
+      });
+
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      });
+
+      const imgWidth = 210;
+      const pageHeight = 297;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let heightLeft = imgHeight;
+      let position = 0;
+
+      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+
+      pdf.save(`Passport_Application_${applicationId}.pdf`);
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      toast.error("Failed to download PDF: " + error.message, {
+        position: "top-right",
+        autoClose: 3000,
+      });
+    }
   };
 
   if (submitted) {
@@ -306,7 +439,7 @@ const PassportApplicationForm = () => {
         <h1 className="text-3xl font-bold mb-6 text-center text-purple-600 font-poppins">
           Application Confirmation
         </h1>
-        <div className="card bg-base-100 shadow-xl">
+        <div id="confirmation-page" className="card bg-base-100 shadow-xl">
           <div className="card-body">
             <div className="mb-6">
               <h2 className="text-2xl font-semibold mb-3 text-gray-800 font-poppins">
@@ -399,69 +532,177 @@ const PassportApplicationForm = () => {
                   <h3 className="text-lg font-semibold text-purple-600 font-poppins">
                     Documents
                   </h3>
-                  <p className="text-gray-700 font-poppins">
-                    <strong>Application Copy:</strong>{" "}
-                    {files.applicationCopy
-                      ? files.applicationCopy.name
-                      : "Not uploaded"}
+                  <p className="text-gray-700 font-poppins flex items-center justify-between">
+                    <span>
+                      <strong>Application Copy:</strong>{" "}
+                      {fileUrls.applicationCopy ? "Uploaded" : "Not uploaded"}
+                    </span>
+                    {fileUrls.applicationCopy && (
+                      <button
+                        onClick={() => handleViewFile(fileUrls.applicationCopy)}
+                        className="btn btn-sm btn-outline btn-purple"
+                      >
+                        View
+                      </button>
+                    )}
                   </p>
-                  <p className="text-gray-700 font-poppins">
-                    <strong>NID/Birth Certificate:</strong>{" "}
-                    {files.nidBirthCertificate
-                      ? files.nidBirthCertificate.name
-                      : "Not uploaded"}
+                  <p className="text-gray-700 font-poppins flex items-center justify-between">
+                    <span>
+                      <strong>NID/Birth Certificate:</strong>{" "}
+                      {fileUrls.nidBirthCertificate
+                        ? "Uploaded"
+                        : "Not uploaded"}
+                    </span>
+                    {fileUrls.nidBirthCertificate && (
+                      <button
+                        onClick={() =>
+                          handleViewFile(fileUrls.nidBirthCertificate)
+                        }
+                        className="btn btn-sm btn-outline btn-purple"
+                      >
+                        View
+                      </button>
+                    )}
                   </p>
-                  <p className="text-gray-700 font-poppins">
-                    <strong>NID Online Copy:</strong>{" "}
-                    {files.nidOnlineCopy
-                      ? files.nidOnlineCopy.name
-                      : "Not uploaded"}
+                  <p className="text-gray-700 font-poppins flex items-center justify-between">
+                    <span>
+                      <strong>NID Online Copy:</strong>{" "}
+                      {fileUrls.nidOnlineCopy ? "Uploaded" : "Not uploaded"}
+                    </span>
+                    {fileUrls.nidOnlineCopy && (
+                      <button
+                        onClick={() => handleViewFile(fileUrls.nidOnlineCopy)}
+                        className="btn btn-sm btn-outline btn-purple"
+                      >
+                        View
+                      </button>
+                    )}
                   </p>
-                  <p className="text-gray-700 font-poppins">
-                    <strong>Student/Job Card:</strong>{" "}
-                    {files.studentJobCard
-                      ? files.studentJobCard.name
-                      : "Not uploaded"}
+                  <p className="text-gray-700 font-poppins flex items-center justify-between">
+                    <span>
+                      <strong>Student/Job Card:</strong>{" "}
+                      {fileUrls.studentJobCard ? "Uploaded" : "Not uploaded"}
+                    </span>
+                    {fileUrls.studentJobCard && (
+                      <button
+                        onClick={() => handleViewFile(fileUrls.studentJobCard)}
+                        className="btn btn-sm btn-outline btn-purple"
+                      >
+                        View
+                      </button>
+                    )}
                   </p>
-                  <p className="text-gray-700 font-poppins">
-                    <strong>Father NID/Birth Certificate:</strong>{" "}
-                    {files.fatherNidBirthCertificate
-                      ? files.fatherNidBirthCertificate.name
-                      : "Not uploaded"}
+                  <p className="text-gray-700 font-poppins flex items-center justify-between">
+                    <span>
+                      <strong>Father NID/Birth Certificate:</strong>{" "}
+                      {fileUrls.fatherNidBirthCertificate
+                        ? "Uploaded"
+                        : "Not uploaded"}
+                    </span>
+                    {fileUrls.fatherNidBirthCertificate && (
+                      <button
+                        onClick={() =>
+                          handleViewFile(fileUrls.fatherNidBirthCertificate)
+                        }
+                        className="btn btn-sm btn-outline btn-purple"
+                      >
+                        View
+                      </button>
+                    )}
                   </p>
-                  <p className="text-gray-700 font-poppins">
-                    <strong>Mother NID/Birth Certificate:</strong>{" "}
-                    {files.motherNidBirthCertificate
-                      ? files.motherNidBirthCertificate.name
-                      : "Not uploaded"}
+                  <p className="text-gray-700 font-poppins flex items-center justify-between">
+                    <span>
+                      <strong>Mother NID/Birth Certificate:</strong>{" "}
+                      {fileUrls.motherNidBirthCertificate
+                        ? "Uploaded"
+                        : "Not uploaded"}
+                    </span>
+                    {fileUrls.motherNidBirthCertificate && (
+                      <button
+                        onClick={() =>
+                          handleViewFile(fileUrls.motherNidBirthCertificate)
+                        }
+                        className="btn btn-sm btn-outline btn-purple"
+                      >
+                        View
+                      </button>
+                    )}
                   </p>
-                  <p className="text-gray-700 font-poppins">
-                    <strong>Utility Bill Copy:</strong>{" "}
-                    {files.utilityBillCopy
-                      ? files.utilityBillCopy.name
-                      : "Not uploaded"}
+                  <p className="text-gray-700 font-poppins flex items-center justify-between">
+                    <span>
+                      <strong>Utility Bill Copy:</strong>{" "}
+                      {fileUrls.utilityBillCopy ? "Uploaded" : "Not uploaded"}
+                    </span>
+                    {fileUrls.utilityBillCopy && (
+                      <button
+                        onClick={() => handleViewFile(fileUrls.utilityBillCopy)}
+                        className="btn btn-sm btn-outline btn-purple"
+                      >
+                        View
+                      </button>
+                    )}
                   </p>
-                  <p className="text-gray-700 font-poppins">
-                    <strong>Previous Passport:</strong>{" "}
-                    {files.previousPassport
-                      ? files.previousPassport.name
-                      : "Not uploaded"}
+                  <p className="text-gray-700 font-poppins flex items-center justify-between">
+                    <span>
+                      <strong>Previous Passport:</strong>{" "}
+                      {fileUrls.previousPassport ? "Uploaded" : "Not uploaded"}
+                    </span>
+                    {fileUrls.previousPassport && (
+                      <button
+                        onClick={() =>
+                          handleViewFile(fileUrls.previousPassport)
+                        }
+                        className="btn btn-sm btn-outline btn-purple"
+                      >
+                        View
+                      </button>
+                    )}
                   </p>
-                  <p className="text-gray-700 font-poppins">
-                    <strong>Land Register:</strong>{" "}
-                    {files.landRegister
-                      ? files.landRegister.name
-                      : "Not uploaded"}
+                  <p className="text-gray-700 font-poppins flex items-center justify-between">
+                    <span>
+                      <strong>Land Register:</strong>{" "}
+                      {fileUrls.landRegister ? "Uploaded" : "Not uploaded"}
+                    </span>
+                    {fileUrls.landRegister && (
+                      <button
+                        onClick={() => handleViewFile(fileUrls.landRegister)}
+                        className="btn btn-sm btn-outline btn-purple"
+                      >
+                        View
+                      </button>
+                    )}
                   </p>
-                  <p className="text-gray-700 font-poppins">
-                    <strong>Citizenship Certificate:</strong>{" "}
-                    {files.citizenshipCertificate
-                      ? files.citizenshipCertificate.name
-                      : "Not uploaded"}
+                  <p className="text-gray-700 font-poppins flex items-center justify-between">
+                    <span>
+                      <strong>Citizenship Certificate:</strong>{" "}
+                      {fileUrls.citizenshipCertificate
+                        ? "Uploaded"
+                        : "Not uploaded"}
+                    </span>
+                    {fileUrls.citizenshipCertificate && (
+                      <button
+                        onClick={() =>
+                          handleViewFile(fileUrls.citizenshipCertificate)
+                        }
+                        className="btn btn-sm btn-outline btn-purple"
+                      >
+                        View
+                      </button>
+                    )}
                   </p>
-                  <p className="text-gray-700 font-poppins">
-                    <strong>Online GD:</strong>{" "}
-                    {files.onlineGD ? files.onlineGD.name : "Not uploaded"}
+                  <p className="text-gray-700 font-poppins flex items-center justify-between">
+                    <span>
+                      <strong>Online GD:</strong>{" "}
+                      {fileUrls.onlineGD ? "Uploaded" : "Not uploaded"}
+                    </span>
+                    {fileUrls.onlineGD && (
+                      <button
+                        onClick={() => handleViewFile(fileUrls.onlineGD)}
+                        className="btn btn-sm btn-outline btn-purple"
+                      >
+                        View
+                      </button>
+                    )}
                   </p>
                 </div>
                 <div className="border-b pb-2">
@@ -473,7 +714,17 @@ const PassportApplicationForm = () => {
                   </p>
                   <p className="text-gray-700 font-poppins">
                     <strong>Appointment Date & Time:</strong>{" "}
-                    {formData.appointmentDate}
+                    {new Date(formData.appointmentDate).toLocaleString(
+                      "en-US",
+                      {
+                        month: "long",
+                        day: "numeric",
+                        year: "numeric",
+                        hour: "numeric",
+                        minute: "numeric",
+                        hour12: true,
+                      }
+                    )}
                   </p>
                 </div>
                 <div className="border-b pb-2">
@@ -522,13 +773,12 @@ const PassportApplicationForm = () => {
   }
 
   return (
-    <div className="container  mx-auto p-4 pt-16">
+    <div className="container mx-auto p-4 pt-16">
       <h1 className="text-3xl font-bold mb-6 text-center text-purple-600 font-poppins">
         Passport Application Form
       </h1>
       <div className="card w-11/12 mx-auto bg-base-100 shadow-xl">
         <div className="card-body">
-          {/* Horizontal Step Bar */}
           <div className="flex justify-center mb-6">
             <div className="steps">
               <div className={`step ${step >= 1 ? "step-primary" : ""}`}>
@@ -561,10 +811,10 @@ const PassportApplicationForm = () => {
           {step === 1 && (
             <div>
               <h2 className="text-2xl font-semibold mb-3 text-gray-800 font-poppins">
-                Passport Type
+                Passport Type Untersuch
               </h2>
               <p className="text-gray-600 mb-6 font-poppins">
-                Select the Passport Type for your application!
+                Select the Passport Type for your application.
               </p>
               <div className="form-control space-y-4">
                 <label className="label cursor-pointer flex items-center gap-3">
@@ -751,7 +1001,7 @@ const PassportApplicationForm = () => {
                 </label>
               </div>
               {formData.previousPassport.startsWith("Yes") && (
-                <div className="mt-6 space-y-4">
+                <div className="mt-6 md:flex gap-2 space-y-4">
                   <div className="form-control">
                     <label className="label">
                       <span className="label-text font-poppins">
@@ -928,7 +1178,7 @@ const PassportApplicationForm = () => {
                 <div className="form-control">
                   <label className="label">
                     <span className="label-text font-poppins">
-                      Application Copy *
+                      Passport Application Copy *
                     </span>
                   </label>
                   <input
@@ -942,8 +1192,9 @@ const PassportApplicationForm = () => {
                   {files.applicationCopy && (
                     <div className="mt-2 flex gap-2">
                       <button
-                        onClick={() => handleViewFile(files.applicationCopy)}
+                        onClick={() => handleViewFile(fileUrls.applicationCopy)}
                         className="btn btn-sm btn-outline btn-purple"
+                        disabled={!fileUrls.applicationCopy}
                       >
                         View
                       </button>
@@ -974,9 +1225,10 @@ const PassportApplicationForm = () => {
                     <div className="mt-2 flex gap-2">
                       <button
                         onClick={() =>
-                          handleViewFile(files.nidBirthCertificate)
+                          handleViewFile(fileUrls.nidBirthCertificate)
                         }
                         className="btn btn-sm btn-outline btn-purple"
+                        disabled={!fileUrls.nidBirthCertificate}
                       >
                         View
                       </button>
@@ -1006,44 +1258,14 @@ const PassportApplicationForm = () => {
                   {files.nidOnlineCopy && (
                     <div className="mt-2 flex gap-2">
                       <button
-                        onClick={() => handleViewFile(files.nidOnlineCopy)}
+                        onClick={() => handleViewFile(fileUrls.nidOnlineCopy)}
                         className="btn btn-sm btn-outline btn-purple"
+                        disabled={!fileUrls.nidOnlineCopy}
                       >
                         View
                       </button>
                       <button
                         onClick={() => handleDeleteFile("nidOnlineCopy")}
-                        className="btn btn-sm btn-outline btn-error"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  )}
-                </div>
-                <div className="form-control">
-                  <label className="label">
-                    <span className="label-text font-poppins">
-                      Student/Job Card *
-                    </span>
-                  </label>
-                  <input
-                    type="file"
-                    name="studentJobCard"
-                    onChange={handleFileChange}
-                    accept=".jpeg,.jpg,.pdf"
-                    className="file-input file-input-bordered w-full"
-                    required
-                  />
-                  {files.studentJobCard && (
-                    <div className="mt-2 flex gap-2">
-                      <button
-                        onClick={() => handleViewFile(files.studentJobCard)}
-                        className="btn btn-sm btn-outline btn-purple"
-                      >
-                        View
-                      </button>
-                      <button
-                        onClick={() => handleDeleteFile("studentJobCard")}
                         className="btn btn-sm btn-outline btn-error"
                       >
                         Delete
@@ -1069,9 +1291,10 @@ const PassportApplicationForm = () => {
                     <div className="mt-2 flex gap-2">
                       <button
                         onClick={() =>
-                          handleViewFile(files.fatherNidBirthCertificate)
+                          handleViewFile(fileUrls.fatherNidBirthCertificate)
                         }
                         className="btn btn-sm btn-outline btn-purple"
+                        disabled={!fileUrls.fatherNidBirthCertificate}
                       >
                         View
                       </button>
@@ -1104,9 +1327,10 @@ const PassportApplicationForm = () => {
                     <div className="mt-2 flex gap-2">
                       <button
                         onClick={() =>
-                          handleViewFile(files.motherNidBirthCertificate)
+                          handleViewFile(fileUrls.motherNidBirthCertificate)
                         }
                         className="btn btn-sm btn-outline btn-purple"
+                        disabled={!fileUrls.motherNidBirthCertificate}
                       >
                         View
                       </button>
@@ -1138,43 +1362,14 @@ const PassportApplicationForm = () => {
                   {files.utilityBillCopy && (
                     <div className="mt-2 flex gap-2">
                       <button
-                        onClick={() => handleViewFile(files.utilityBillCopy)}
+                        onClick={() => handleViewFile(fileUrls.utilityBillCopy)}
                         className="btn btn-sm btn-outline btn-purple"
+                        disabled={!fileUrls.utilityBillCopy}
                       >
                         View
                       </button>
                       <button
                         onClick={() => handleDeleteFile("utilityBillCopy")}
-                        className="btn btn-sm btn-outline btn-error"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  )}
-                </div>
-                <div className="form-control">
-                  <label className="label">
-                    <span className="label-text font-poppins">
-                      Previous Passport (if applicable)
-                    </span>
-                  </label>
-                  <input
-                    type="file"
-                    name="previousPassport"
-                    onChange={handleFileChange}
-                    accept=".jpeg,.jpg,.pdf"
-                    className="file-input file-input-bordered w-full"
-                  />
-                  {files.previousPassport && (
-                    <div className="mt-2 flex gap-2">
-                      <button
-                        onClick={() => handleViewFile(files.previousPassport)}
-                        className="btn btn-sm btn-outline btn-purple"
-                      >
-                        View
-                      </button>
-                      <button
-                        onClick={() => handleDeleteFile("previousPassport")}
                         className="btn btn-sm btn-outline btn-error"
                       >
                         Delete
@@ -1199,8 +1394,9 @@ const PassportApplicationForm = () => {
                   {files.landRegister && (
                     <div className="mt-2 flex gap-2">
                       <button
-                        onClick={() => handleViewFile(files.landRegister)}
+                        onClick={() => handleViewFile(fileUrls.landRegister)}
                         className="btn btn-sm btn-outline btn-purple"
+                        disabled={!fileUrls.landRegister}
                       >
                         View
                       </button>
@@ -1231,9 +1427,10 @@ const PassportApplicationForm = () => {
                     <div className="mt-2 flex gap-2">
                       <button
                         onClick={() =>
-                          handleViewFile(files.citizenshipCertificate)
+                          handleViewFile(fileUrls.citizenshipCertificate)
                         }
                         className="btn btn-sm btn-outline btn-purple"
+                        disabled={!fileUrls.citizenshipCertificate}
                       >
                         View
                       </button>
@@ -1241,6 +1438,70 @@ const PassportApplicationForm = () => {
                         onClick={() =>
                           handleDeleteFile("citizenshipCertificate")
                         }
+                        className="btn btn-sm btn-outline btn-error"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <div className="form-control">
+                  <label className="label">
+                    <span className="label-text font-poppins">
+                      Student/Job Card (if applicable)
+                    </span>
+                  </label>
+                  <input
+                    type="file"
+                    name="studentJobCard"
+                    onChange={handleFileChange}
+                    accept=".jpeg,.jpg,.pdf"
+                    className="file-input file-input-bordered w-full"
+                  />
+                  {files.studentJobCard && (
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        onClick={() => handleViewFile(fileUrls.studentJobCard)}
+                        className="btn btn-sm btn-outline btn-purple"
+                        disabled={!fileUrls.studentJobCard}
+                      >
+                        View
+                      </button>
+                      <button
+                        onClick={() => handleDeleteFile("studentJobCard")}
+                        className="btn btn-sm btn-outline btn-error"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <div className="form-control">
+                  <label className="label">
+                    <span className="label-text font-poppins">
+                      Previous Passport (if applicable)
+                    </span>
+                  </label>
+                  <input
+                    type="file"
+                    name="previousPassport"
+                    onChange={handleFileChange}
+                    accept=".jpeg,.jpg,.pdf"
+                    className="file-input file-input-bordered w-full"
+                  />
+                  {files.previousPassport && (
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        onClick={() =>
+                          handleViewFile(fileUrls.previousPassport)
+                        }
+                        className="btn btn-sm btn-outline btn-purple"
+                        disabled={!fileUrls.previousPassport}
+                      >
+                        View
+                      </button>
+                      <button
+                        onClick={() => handleDeleteFile("previousPassport")}
                         className="btn btn-sm btn-outline btn-error"
                       >
                         Delete
@@ -1264,8 +1525,9 @@ const PassportApplicationForm = () => {
                   {files.onlineGD && (
                     <div className="mt-2 flex gap-2">
                       <button
-                        onClick={() => handleViewFile(files.onlineGD)}
+                        onClick={() => handleViewFile(fileUrls.onlineGD)}
                         className="btn btn-sm btn-outline btn-purple"
+                        disabled={!fileUrls.onlineGD}
                       >
                         View
                       </button>
@@ -1351,7 +1613,13 @@ const PassportApplicationForm = () => {
                         <input
                           type="date"
                           name="appointmentDate"
-                          value={formData.appointmentDate}
+                          value={
+                            formData.appointmentDate
+                              ? new Date(formData.appointmentDate)
+                                  .toISOString()
+                                  .split("T")[0]
+                              : ""
+                          }
                           onChange={handleInputChange}
                           min="2025-04-28"
                           className="input input-bordered w-full pl-10"
@@ -1377,7 +1645,7 @@ const PassportApplicationForm = () => {
                           name="appointmentTime"
                           value={formData.appointmentTime}
                           onChange={handleInputChange}
-                          step="1800" // 30-minute intervals
+                          step="1800"
                           className="input input-bordered w-full pl-10"
                           style={{
                             backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23a855f7' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z'/%3E%3C/svg%3E")`,
@@ -1556,13 +1824,13 @@ const PassportApplicationForm = () => {
                     <p className="text-gray-700 font-poppins flex items-center justify-between">
                       <span>
                         <strong>Application Copy:</strong>{" "}
-                        {files.applicationCopy
-                          ? files.applicationCopy.name
-                          : "Not uploaded"}
+                        {fileUrls.applicationCopy ? "Uploaded" : "Not uploaded"}
                       </span>
-                      {files.applicationCopy && (
+                      {fileUrls.applicationCopy && (
                         <button
-                          onClick={() => handleViewFile(files.applicationCopy)}
+                          onClick={() =>
+                            handleViewFile(fileUrls.applicationCopy)
+                          }
                           className="btn btn-sm btn-outline btn-purple"
                         >
                           View
@@ -1572,14 +1840,14 @@ const PassportApplicationForm = () => {
                     <p className="text-gray-700 font-poppins flex items-center justify-between">
                       <span>
                         <strong>NID/Birth Certificate:</strong>{" "}
-                        {files.nidBirthCertificate
-                          ? files.nidBirthCertificate.name
+                        {fileUrls.nidBirthCertificate
+                          ? "Uploaded"
                           : "Not uploaded"}
                       </span>
-                      {files.nidBirthCertificate && (
+                      {fileUrls.nidBirthCertificate && (
                         <button
                           onClick={() =>
-                            handleViewFile(files.nidBirthCertificate)
+                            handleViewFile(fileUrls.nidBirthCertificate)
                           }
                           className="btn btn-sm btn-outline btn-purple"
                         >
@@ -1590,13 +1858,11 @@ const PassportApplicationForm = () => {
                     <p className="text-gray-700 font-poppins flex items-center justify-between">
                       <span>
                         <strong>NID Online Copy:</strong>{" "}
-                        {files.nidOnlineCopy
-                          ? files.nidOnlineCopy.name
-                          : "Not uploaded"}
+                        {fileUrls.nidOnlineCopy ? "Uploaded" : "Not uploaded"}
                       </span>
-                      {files.nidOnlineCopy && (
+                      {fileUrls.nidOnlineCopy && (
                         <button
-                          onClick={() => handleViewFile(files.nidOnlineCopy)}
+                          onClick={() => handleViewFile(fileUrls.nidOnlineCopy)}
                           className="btn btn-sm btn-outline btn-purple"
                         >
                           View
@@ -1606,13 +1872,13 @@ const PassportApplicationForm = () => {
                     <p className="text-gray-700 font-poppins flex items-center justify-between">
                       <span>
                         <strong>Student/Job Card:</strong>{" "}
-                        {files.studentJobCard
-                          ? files.studentJobCard.name
-                          : "Not uploaded"}
+                        {fileUrls.studentJobCard ? "Uploaded" : "Not uploaded"}
                       </span>
-                      {files.studentJobCard && (
+                      {fileUrls.studentJobCard && (
                         <button
-                          onClick={() => handleViewFile(files.studentJobCard)}
+                          onClick={() =>
+                            handleViewFile(fileUrls.studentJobCard)
+                          }
                           className="btn btn-sm btn-outline btn-purple"
                         >
                           View
@@ -1622,14 +1888,14 @@ const PassportApplicationForm = () => {
                     <p className="text-gray-700 font-poppins flex items-center justify-between">
                       <span>
                         <strong>Father NID/Birth Certificate:</strong>{" "}
-                        {files.fatherNidBirthCertificate
-                          ? files.fatherNidBirthCertificate.name
+                        {fileUrls.fatherNidBirthCertificate
+                          ? "Uploaded"
                           : "Not uploaded"}
                       </span>
-                      {files.fatherNidBirthCertificate && (
+                      {fileUrls.fatherNidBirthCertificate && (
                         <button
                           onClick={() =>
-                            handleViewFile(files.fatherNidBirthCertificate)
+                            handleViewFile(fileUrls.fatherNidBirthCertificate)
                           }
                           className="btn btn-sm btn-outline btn-purple"
                         >
@@ -1640,14 +1906,14 @@ const PassportApplicationForm = () => {
                     <p className="text-gray-700 font-poppins flex items-center justify-between">
                       <span>
                         <strong>Mother NID/Birth Certificate:</strong>{" "}
-                        {files.motherNidBirthCertificate
-                          ? files.motherNidBirthCertificate.name
+                        {fileUrls.motherNidBirthCertificate
+                          ? "Uploaded"
                           : "Not uploaded"}
                       </span>
-                      {files.motherNidBirthCertificate && (
+                      {fileUrls.motherNidBirthCertificate && (
                         <button
                           onClick={() =>
-                            handleViewFile(files.motherNidBirthCertificate)
+                            handleViewFile(fileUrls.motherNidBirthCertificate)
                           }
                           className="btn btn-sm btn-outline btn-purple"
                         >
@@ -1658,13 +1924,13 @@ const PassportApplicationForm = () => {
                     <p className="text-gray-700 font-poppins flex items-center justify-between">
                       <span>
                         <strong>Utility Bill Copy:</strong>{" "}
-                        {files.utilityBillCopy
-                          ? files.utilityBillCopy.name
-                          : "Not uploaded"}
+                        {fileUrls.utilityBillCopy ? "Uploaded" : "Not uploaded"}
                       </span>
-                      {files.utilityBillCopy && (
+                      {fileUrls.utilityBillCopy && (
                         <button
-                          onClick={() => handleViewFile(files.utilityBillCopy)}
+                          onClick={() =>
+                            handleViewFile(fileUrls.utilityBillCopy)
+                          }
                           className="btn btn-sm btn-outline btn-purple"
                         >
                           View
@@ -1674,13 +1940,15 @@ const PassportApplicationForm = () => {
                     <p className="text-gray-700 font-poppins flex items-center justify-between">
                       <span>
                         <strong>Previous Passport:</strong>{" "}
-                        {files.previousPassport
-                          ? files.previousPassport.name
+                        {fileUrls.previousPassport
+                          ? "Uploaded"
                           : "Not uploaded"}
                       </span>
-                      {files.previousPassport && (
+                      {fileUrls.previousPassport && (
                         <button
-                          onClick={() => handleViewFile(files.previousPassport)}
+                          onClick={() =>
+                            handleViewFile(fileUrls.previousPassport)
+                          }
                           className="btn btn-sm btn-outline btn-purple"
                         >
                           View
@@ -1690,13 +1958,11 @@ const PassportApplicationForm = () => {
                     <p className="text-gray-700 font-poppins flex items-center justify-between">
                       <span>
                         <strong>Land Register:</strong>{" "}
-                        {files.landRegister
-                          ? files.landRegister.name
-                          : "Not uploaded"}
+                        {fileUrls.landRegister ? "Uploaded" : "Not uploaded"}
                       </span>
-                      {files.landRegister && (
+                      {fileUrls.landRegister && (
                         <button
-                          onClick={() => handleViewFile(files.landRegister)}
+                          onClick={() => handleViewFile(fileUrls.landRegister)}
                           className="btn btn-sm btn-outline btn-purple"
                         >
                           View
@@ -1706,14 +1972,14 @@ const PassportApplicationForm = () => {
                     <p className="text-gray-700 font-poppins flex items-center justify-between">
                       <span>
                         <strong>Citizenship Certificate:</strong>{" "}
-                        {files.citizenshipCertificate
-                          ? files.citizenshipCertificate.name
+                        {fileUrls.citizenshipCertificate
+                          ? "Uploaded"
                           : "Not uploaded"}
                       </span>
-                      {files.citizenshipCertificate && (
+                      {fileUrls.citizenshipCertificate && (
                         <button
                           onClick={() =>
-                            handleViewFile(files.citizenshipCertificate)
+                            handleViewFile(fileUrls.citizenshipCertificate)
                           }
                           className="btn btn-sm btn-outline btn-purple"
                         >
@@ -1724,11 +1990,11 @@ const PassportApplicationForm = () => {
                     <p className="text-gray-700 font-poppins flex items-center justify-between">
                       <span>
                         <strong>Online GD:</strong>{" "}
-                        {files.onlineGD ? files.onlineGD.name : "Not uploaded"}
+                        {fileUrls.onlineGD ? "Uploaded" : "Not uploaded"}
                       </span>
-                      {files.onlineGD && (
+                      {fileUrls.onlineGD && (
                         <button
-                          onClick={() => handleViewFile(files.onlineGD)}
+                          onClick={() => handleViewFile(fileUrls.onlineGD)}
                           className="btn btn-sm btn-outline btn-purple"
                         >
                           View
@@ -1746,7 +2012,17 @@ const PassportApplicationForm = () => {
                   </p>
                   <p className="text-gray-700 font-poppins">
                     <strong>Appointment Date & Time:</strong>{" "}
-                    {formData.appointmentDate}
+                    {new Date(formData.appointmentDate).toLocaleString(
+                      "en-US",
+                      {
+                        month: "long",
+                        day: "numeric",
+                        year: "numeric",
+                        hour: "numeric",
+                        minute: "numeric",
+                        hour12: true,
+                      }
+                    )}
                   </p>
                 </div>
                 <div className="border-b pb-2">
