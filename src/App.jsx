@@ -5,6 +5,9 @@ import Dashboard from "./Layouts/Dashboard";
 import Root from "./Layouts/Root";
 import Contact from "./Pages/Contact";
 import DashboardHome from "./Pages/Dashboard/DashboardHome";
+import ManageDeliveries from "./Pages/Dashboard/ManageDeliveries";
+import PickupPoints from "./Pages/Dashboard/PickupPoints";
+import Profile from "./Pages/Dashboard/Profile";
 import ErrorPage from "./Pages/ErrorPage";
 import FAQ from "./Pages/Faq";
 import Home from "./Pages/Home";
@@ -49,12 +52,12 @@ function App() {
           <Route path="ManageUsers" element={<Loading />} /> */}
 
           {/* ShapOSS Routes: For managing deliveries and pickup points */}
-          {/* <Route path="ManageDeliveries" element={<Loading />} />
-          <Route path="PickupPoints" element={<Loading />} /> */}
+          <Route path="ManageDeliveries" element={<ManageDeliveries />} />
+          <Route path="PickupPoints" element={<PickupPoints />} />
 
           {/* Common Routes: Shared across both roles */}
-          {/* <Route path="Profile" element={<Loading />} />
-          <Route path="Settings" element={<Loading />} /> */}
+          <Route path="Profile" element={<Profile />} />
+          {/* <Route path="Settings" element={<Loading />} /> */}
         </Route>
       </Route>
     </Routes>
